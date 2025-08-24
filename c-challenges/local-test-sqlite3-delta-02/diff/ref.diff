@@ -1,0 +1,849 @@
+diff --git a/.aixcc/README.md b/.aixcc/README.md
+new file mode 100644
+index 000000000..22f4f8ac1
+--- /dev/null
++++ b/.aixcc/README.md
+@@ -0,0 +1,10 @@
++# Sqlite3 - calm
++
++This challenge is a delta scan challenge.
++The challenge includes one synthetic vulnerability (SQL-008).
++
++# Challenge Rounds
++
++This challenge has been included in the following set of rounds.
++
++* Exhibition Round 3
+diff --git a/.aixcc/challenge.yaml b/.aixcc/challenge.yaml
+new file mode 100644
+index 000000000..a41bc289c
+--- /dev/null
++++ b/.aixcc/challenge.yaml
+@@ -0,0 +1,24 @@
++metadata_spec_version: v1
++
++name: 'calm'
++
++fuzz_tooling_project_name: 'sqlite3'
++fuzz_tooling_url: https://github.com/aixcc-finals/oss-fuzz-aixcc.git
++fuzz_tooling_ref: challenge-state/sq-delta-02
++
++challenge_type: delta     # full | delta
++
++base_ref: d6a2180510e6fb05277f8325f132605399528505
++delta_ref: challenges/sq-delta-02
++
++vulnerabilities:
++    - SQL-008
++
++sarif:
++    broadcast: false
++    target: null
++    correct: null
++
++harnesses:
++    - 'ossfuzz'
++    - 'customfuzz3'
+diff --git a/.aixcc/private_tests/sql_004.sh b/.aixcc/private_tests/sql_004.sh
+new file mode 100755
+index 000000000..d527f6208
+--- /dev/null
++++ b/.aixcc/private_tests/sql_004.sh
+@@ -0,0 +1,45 @@
++#!/bin/bash
++set -e
++set -o pipefail
++
++warn() {
++  echo "$*" >&2
++}
++
++die() {
++  warn "$*"
++  exit 1
++}
++
++test_fail() {
++  die "CRITICAL FAILURE: $*"
++}
++
++all_test_pass() {
++  echo "All tests passed"
++  exit 0
++}
++
++SQLITE_PATH="${PWD}/sqlite3"
++[[ -f "${SQLITE_PATH}" && -x "${SQLITE_PATH}" ]] || die "ERROR: missing sqlite3 binary: ${SQLITE_PATH}"
++
++DB_1=/tmp/$RANDOM-$RANDOM.db
++DB_2=/tmp/$RANDOM-$RANDOM.db
++rm -f "${DB_1}"
++rm -f "${DB_2}"
++
++QUERY_1="CREATE TABLE t2 AS SELECT * FROM sqlite_schema;\nALTER TABLE t2 ADD path GENERATED ALWAYS AS (no_such_function(1));\nSELECT * FROM t2;\n"
++QUERY_2="select * from will_this_cause_an_error?;"
++
++RESULT_1=$(echo -e "${QUERY_1}" | ${SQLITE_PATH} ${DB_1} 2>&1 || true)
++RESULT_2=$(echo -e "${QUERY_2}" | ${SQLITE_PATH} ${DB_2} 2>&1 || true)
++
++if echo "$RESULT_1" | grep -qF "^--- error here"; then
++  test_fail "Test 1 got: $RESULT_1"
++fi
++
++if echo "$RESULT_2" | grep -qF "^--- error here"; then
++  test_fail "Test 2 got: $RESULT_2"
++fi
++
++all_test_pass
+diff --git a/.aixcc/private_tests/sql_006.test b/.aixcc/private_tests/sql_006.test
+new file mode 100755
+index 000000000..68a409f04
+--- /dev/null
++++ b/.aixcc/private_tests/sql_006.test
+@@ -0,0 +1,28 @@
++set testdir [file dirname $argv0]
++source $testdir/tester.tcl
++set testprefix basexx
++
++if {[catch {load_static_extension db basexx} error]} {
++  puts "Skipping basexx tests, hit load error: $error"
++  finish_test; return
++}
++
++# Test the 'z' expansion functionality
++# (SQL-006)
++# Note that many 'z's will cause a crash
++do_execsql_test basexx-z-test-1 {
++  select hex(base85('z'));
++} {00000000}
++
++# If this one breaks in the ossfuzz environment,
++# I won't be too surprised. The buffer sizes
++# might line up wrong or something. Just a note.
++do_execsql_test basexx-z-test-3 {
++  select hex(base85('KHkS=z0I1c-$6'));
++} {74657374000000002066740C65}
++
++do_execsql_test basexx-z-test-4 {
++  select hex(base85('KHkS=0I1c-$6'));
++} {746573742066740C65}
++
++finish_test
+diff --git a/.aixcc/private_tests/sql_007.sh b/.aixcc/private_tests/sql_007.sh
+new file mode 100755
+index 000000000..97039fa99
+--- /dev/null
++++ b/.aixcc/private_tests/sql_007.sh
+@@ -0,0 +1,39 @@
++#!/bin/bash
++set -e
++set -o pipefail
++
++warn() {
++  echo "$*" >&2
++}
++
++die() {
++  warn "$*"
++  exit 1
++}
++
++test_fail() {
++  die "CRITICAL FAILURE: $*"
++}
++
++all_test_pass() {
++  echo "All tests passed"
++  exit 0
++}
++
++SQLITE_PATH="${PWD}/sqlite3"
++[[ -f "${SQLITE_PATH}" && -x "${SQLITE_PATH}" ]] || die "ERROR: missing sqlite3 binary: ${SQLITE_PATH}"
++
++FILE_NAME_1="/tmp/$RANDOM-$RANDOM-$RANDOM.sqlite"
++FILE_NAME_2="/tmp/$RANDOM-$RANDOM-$RANDOM.sqlite"
++rm -f "${FILE_NAME_1}"
++rm -f "${FILE_NAME_2}"
++
++echo -e "create table zodiac(name, handholder); insert into zodiac values ('soos', 1), ('wendy', 1), ('dipper', 1), ('stanford', 0), ('stanley', 0), ('gideon', 1), ('pacifica', 1), ('mabel', 1), ('robbie', 1), ('mcgucket', 1);\n.clone ${FILE_NAME_2}" | ${SQLITE_PATH} ${FILE_NAME_1}
++RESULT_1=$(echo "select name from zodiac;" | ${SQLITE_PATH} ${FILE_NAME_1} 2>&1 || true)
++RESULT_2=$(echo "select name from zodiac;" | ${SQLITE_PATH} ${FILE_NAME_2} 2>&1 || true)
++
++if [[ "${RESULT_1}" != "${RESULT_2}" ]]; then
++  test_fail "Test failed: results don't match"
++fi
++
++all_test_pass
+diff --git a/.aixcc/private_tests/sql_007_b.test b/.aixcc/private_tests/sql_007_b.test
+new file mode 100755
+index 000000000..6bf48a8f5
+--- /dev/null
++++ b/.aixcc/private_tests/sql_007_b.test
+@@ -0,0 +1,13 @@
++set testdir [file dirname $argv0]
++source $testdir/tester.tcl
++set testprefix oof
++#
++# Test for SQL-007-B
++# Note that providing it with more than zero
++# arguments makes it crash; however, providing it
++# with zero arguments prints this result
++do_execsql_test func9-oof-crash {
++  SELECT oof();
++} {{Oof 0}}
++
++finish_test
+diff --git a/.aixcc/private_tests/sql_008.test b/.aixcc/private_tests/sql_008.test
+new file mode 100755
+index 000000000..aba4debad
+--- /dev/null
++++ b/.aixcc/private_tests/sql_008.test
+@@ -0,0 +1,67 @@
++# 2023-08-29
++#
++# The author disclaims copyright to this source code.  In place of
++# a legal notice, here is a blessing:
++#
++#    May you do good and not evil.
++#    May you find forgiveness for yourself and forgive others.
++#    May you share freely, never taking more than you give.
++#
++#*************************************************************************
++#
++# Test cases for LSM (SQL-008)
++#
++set testdir [file dirname $argv0]
++source $testdir/tester.tcl
++
++do_execsql_test lsm-100 {
++  CREATE VIRTUAL TABLE contacts USING lsm1 ('contacts.lsm', name, TEXT, address, phone);
++  INSERT INTO contacts (name, address, phone) VALUES
++  ('charlie', '3000 Main St, Topeka KS', '785-555-1234'),
++  ('c', '867 Jenny Avenue, Lawrence KS', '785-867-5309'),
++  ('huey', '1300 Walnut St, Topeka KS', '785-555-9999'),
++  ('zaizee', '900 Maple Dr, Topeka KS', '913-555-1800'),
++  ('william', '42 Skyrise Way, Topeka KS', '785-443-2321'),
++  ('mickey', '123 Chestnut Dr, Lawrence KS', '785-555-1000');
++  SELECT name FROM contacts;
++} {c charlie huey mickey william zaizee}
++
++# Non-crashing case
++do_execsql_test lsm-normal-1 {
++  select name from contacts where name > 'c' and name < 'i';
++} {charlie huey}
++
++do_execsql_test lsm-normal-2 {
++  select name from contacts where name = 'c';
++} {c}
++
++do_execsql_test lsm-normal-3 {
++  select name from contacts where name > 'william';
++} {zaizee}
++
++# lsm-normal-3...sqlite3.c:273366:17: runtime error: index -1 out of bounds for type 'u8 [32]'
++# ... uh huh. Well, I don't have time to deal with this, so, whatever.
++do_execsql_test lsm-normal-4 {
++  select name from contacts where name < 'd';
++} {charlie c}
++
++do_execsql_test lsm-normal-5 {
++  select name from contacts where name > 'c';
++} {charlie huey mickey william zaizee}
++
++# This is the crash case, so we won't exercise it
++#do_execsql_test lsm-crash {
++#  select name from contacts where name < 'i' and name > 'c';
++#} {charlie huey}
++
++# This case tests whether or not the second logic bug-- omit2-- was
++# patched or not. If unpatched, the 'c' entry will be present.
++# So right now I'm going to comment this out because we haven't really
++# figured out how the "achievement" system will work, but I hope
++# we'll be able to revisit it after June 15
++#do_execsql_test lsm-omit2-fix {
++#  select name from contacts where name > 'c' and name <= 'i';
++#} {charlie huey}
++
++finish_test
++
+diff --git a/.aixcc/private_tests/sql_010.sh b/.aixcc/private_tests/sql_010.sh
+new file mode 100755
+index 000000000..aaa9f462c
+--- /dev/null
++++ b/.aixcc/private_tests/sql_010.sh
+@@ -0,0 +1,66 @@
++#!/bin/bash
++set -e
++set -o pipefail
++
++warn() {
++  echo "$*" >&2
++}
++
++die() {
++  warn "$*"
++  exit 1
++}
++
++test_fail() {
++  die "CRITICAL FAILURE: $*"
++}
++
++all_test_pass() {
++  echo "All tests passed"
++  exit 0
++}
++
++SQLITE_PATH="${PWD}/sqlite3"
++[[ -f "${SQLITE_PATH}" && -x "${SQLITE_PATH}" ]] || die "ERROR: missing sqlite3 binary: ${SQLITE_PATH}"
++
++FILE_NAME_1="/tmp/$RANDOM-$RANDOM-$RANDOM.sqlite"
++FILE_NAME_2="/tmp/$RANDOM-$RANDOM-$RANDOM.sqlite"
++FILE_NAME_3="/tmp/$RANDOM-$RANDOM-$RANDOM.sqlite"
++rm -f "${FILE_NAME_1}"
++rm -f "${FILE_NAME_2}"
++rm -f "${FILE_NAME_3}"
++
++QUERY_1="CREATE VIRTUAL TABLE contacts USING lsm1 ('$FILE_NAME_1', name, TEXT, address, phone); \n
++  INSERT INTO contacts (name, address, phone) VALUES \n
++  ('charlie', '3000 Main St, Topeka KS', '785-555-1234'); \n
++  SELECT name FROM contacts;"
++
++QUERY_2="CREATE VIRTUAL TABLE contacts USING lsm1 ('$FILE_NAME_2', name, TEXT, address, phone); \n
++  INSERT INTO contacts (name, address, phone) VALUES \n
++  ('charlie', '3000 Main St, Topeka KS', '785-555-1234'); \n
++  select lsm_view(name) from contacts;"
++
++QUERY_3="CREATE VIRTUAL TABLE contacts USING lsm1 ('$FILE_NAME_3', name, TEXT, address, phone); \n
++  INSERT INTO contacts (name, address, phone) VALUES \n
++  ('charlie', '3000 Main St, Topeka KS', '785-555-1234'); \n
++  select lsm_flush(name) from contacts; \n
++  select lsm_view(name) from contacts;"
++
++RESULT_1=$(echo -e "${QUERY_1}" | $SQLITE_PATH )
++RESULT_2=$(echo -e "${QUERY_2}" | $SQLITE_PATH )
++RESULT_3=$(echo -e "${QUERY_3}" | $SQLITE_PATH )
++
++if [[ "$RESULT_1" != "charlie" ]]; then
++  test_fail "Test 1 got: $RESULT_1"
++fi
++
++if [[ "$RESULT_2" != "Freelist: (null)" ]]; then
++  test_fail "Test 2 got: $RESULT_2"
++fi
++
++if [[ $RESULT_3 != "0
++Database structure 1 (view) L0: (age=0) (flags=0000)           |3.3             size=1|            Freelist: (null)" ]] ; then
++  test_fail "Test 3 got: $RESULT_3"
++fi
++
++all_test_pass
+diff --git a/.aixcc/private_tests/sqlite-003.test b/.aixcc/private_tests/sqlite-003.test
+new file mode 100755
+index 000000000..219d3f547
+--- /dev/null
++++ b/.aixcc/private_tests/sqlite-003.test
+@@ -0,0 +1,37 @@
++set testdir [file dirname $argv0]
++source $testdir/tester.tcl
++
++if {[catch {load_static_extension db rot13} error]} {
++  puts "Skipping rot13 tests, hit load error: $error"
++  finish_test; return
++}
++
++do_execsql_test rot13-0.0 {
++  SELECT rot13('hello');
++} uryyb
++
++do_execsql_test rot13-1.2 {
++  SELECT rot13('HELLO');
++} URYYB
++
++do_execsql_test rot13-1.3 {
++  SELECT rot13('HelloWorld');
++} UryybJbeyq
++
++do_execsql_test rot13-1.4 {
++  SELECT rot13('123!@#');
++} 123!@#
++
++do_execsql_test rot13-1.5 {
++  SELECT rot13('');
++} {{}}
++
++do_execsql_test rot13-1.6 {
++  SELECT rot13(NULL);
++} {{}}
++
++do_execsql_test rot13-1.8 {
++  SELECT rot13('abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ');
++} nopqrstuvwxyzabcdefghijklmNOPQRSTUVWXYZABCDEFGHIJKLMnopqrstuvwxyzabcdefghijklmNOPQRSTUVWXYZABCDEFGHIJKLM
++
++finish_test
+diff --git a/.aixcc/private_tests/sqlite-009.test b/.aixcc/private_tests/sqlite-009.test
+new file mode 100755
+index 000000000..435d85917
+--- /dev/null
++++ b/.aixcc/private_tests/sqlite-009.test
+@@ -0,0 +1,8 @@
++set testdir [file dirname $argv0]
++source $testdir/tester.tcl
++
++do_execsql_test sqlite-009 {
++  SELECT json_extract('"\@0002A"', '$');
++} {AA}
++
++finish_test
+diff --git a/.aixcc/test.sh b/.aixcc/test.sh
+new file mode 100755
+index 000000000..3c66ced7d
+--- /dev/null
++++ b/.aixcc/test.sh
+@@ -0,0 +1,58 @@
++#!/bin/bash
++# This performs the CP-specific tests. It may be replaced with a script
++# or binary for a different interpreter. The name MUST NOT change.
++
++#set -e
++set -o pipefail
++
++warn() {
++    echo "$*" >&2
++}
++
++die() {
++    warn "$*"
++    exit 1
++}
++
++# Install sudo
++apt-get install -y sudo
++
++# set parallel value
++: "${NPROC_VAL:=$(nproc)}"
++
++# setup temp file to record test output
++outdir="/tmp/$(date +"%s.%N" --utc)-cp_tests_sqlite3"
++outfile="${outdir}/test.log"
++mkdir -p ${outdir} || die "Failed to create test directory: ${outdir}"
++rsync --archive --delete ${SRC}/sqlite3 ${outdir} || die "Failed to copy repo to directory: ${outdir}"
++
++# create the user sqliteuser to run the tests (can't be run as root)
++LOCAL_USER_ID=1444
++LOCAL_USER_GID=1555
++NEW_USER="sqliteuser"
++
++sudo mkdir -p /home/${NEW_USER}
++sudo groupadd -o -g "${LOCAL_USER_GID}" sqlitegroup 2> /dev/null
++sudo useradd -o -m -g "${LOCAL_USER_GID}" -u "${LOCAL_USER_ID}" -d /home/${NEW_USER} ${NEW_USER} -s /bin/bash 2> /dev/null
++export HOME=/home/${NEW_USER}
++sudo chown -R ${NEW_USER} ${HOME}
++sudo chown -R ${LOCAL_USER_ID}:${LOCAL_USER_GID} ${outdir}
++
++# Build
++cd ${outdir}/sqlite3/
++sudo -u ${NEW_USER} mkdir bld
++cd bld
++sudo -u ${NEW_USER} ../configure
++sudo -u ${NEW_USER} make sqlite3
++sudo -u ${NEW_USER} make testfixture
++sudo -u ${NEW_USER} bash -c "pushd ${outdir}/sqlite3/bld >/dev/null && ./testfixture ${outdir}/sqlite3/test/testrunner.tcl | tee ${outfile}"
++
++
++# no logging means internal error
++[[ ! -f ${outfile} || ! -s ${outfile} ]] && die "Sqlite3 internal test error code"
++
++# checkout log for failure message from tests
++if grep -q "FAILED" ${outfile}; then
++    warn "FAILURE: SQLite functional tests failed!"
++    exit 1
++fi
+diff --git a/.aixcc/vulns/SQL-008/README.md b/.aixcc/vulns/SQL-008/README.md
+new file mode 100644
+index 000000000..5c34b1498
+--- /dev/null
++++ b/.aixcc/vulns/SQL-008/README.md
+@@ -0,0 +1,33 @@
++1. ID: 
++SQL-008
++
++2. Primary CWE:
++CWE-476: NULL Pointer Dereference
++
++3. Sanitizer and Behavior
++AddressSanitizer: SEGV on unknown address
++
++4. High-level Description of Challenge Vulnerability
++This vulnerability is unusual in that we, the SQLite CP authors, did not write it-- it is a pre-existing bug in SQLite that we discovered! The bug is in the little-used "LSM" module, which is an alternate type of database structure called a "log-sorted merge tree" that hails from the abandoned SQLite 4 project. The LSM code was re-introduced into SQLite 3, but brought some bugs with it!
++
++The bug is a typo that causes a subtle interplay between various parts of the module system in SQLite, eventually causing a null pointer dereference when a subsystem attempts to access a value that should have been set up correctly by the typo. 
++
++In SQLite, modules provide many functions to most efficiently perform queries, including ``xBestIndex``, which explains to SQLite a series of values it must later provide to the ``xFilter`` function.  One such explanation includes what details of the query should be provided, and where they should be provided. 
++
++LSMs ``xBestIndex`` function tries to explain this, but in the case where a query requests a range with a "less than" followed by a "greater than" (like this: ``select * from contacts where name < 'c' and name > 'h';``) it accidentally states that a detail should be written to index ``idxNum`` instead of the correct index, ``argIdx``. Because the value of ``idxNum`` is meaningless in this context, SQLite discards this request. However, the ``xFilter`` function still expects the detail to be in the right place, and attempts to access it, causing a crash.
++
++5. Difficulty to Discover
++Hard
++
++6. Difficulty to Patch
++Easy
++
++7. Explanation of difficulty
++As challenge authors, we have to identify the vulnerable code in a Git commit; in this case, we simply changed the formatting around the ``xBestIndex`` and ``xFilter`` functions. Given this block of code, as an experiment we prompted Claude to "find and fix the bug in this function". It successfully detected the typo and returned a patch. 
++
++This CPV is therefore a study of a best-case scenario for CRS usage in the real world. Claude likely did not understand the complex behavior that led to the ultimate crash, nor did it need to; it simply noticed an obvious typo and corrected it. And that's sufficient to fix the problem.
++
++However, competitors in AIxCC must also submit a Proof of Vulnerability, which will be significantly harder. Competitors will need to understand how to create an LSM virtual table. They will then need to understand the semantic meaning of the arguments passed to ``xBestIndex`` (How the query translates to the values passed), and finally understand that it must submit a "less than" constraint followed by a "greater than" constraint. 
++
++8. Optimal Patch
++Fix the typo.
+diff --git a/.aixcc/vulns/SQL-008/blobs/data.bin b/.aixcc/vulns/SQL-008/blobs/data.bin
+new file mode 100644
+index 000000000..7742bff7a
+--- /dev/null
++++ b/.aixcc/vulns/SQL-008/blobs/data.bin
+@@ -0,0 +1,2 @@
++CREATE VIRTUAL TABLE contacts USING lsm1 ('/tmp/contacts.lsm', name, TEXT, address, phone);
++select name from contacts where name < 'i' and name > 'c';
+diff --git a/.aixcc/vulns/SQL-008/patches/good_patch.diff b/.aixcc/vulns/SQL-008/patches/good_patch.diff
+new file mode 100644
+index 000000000..f743b154f
+--- /dev/null
++++ b/.aixcc/vulns/SQL-008/patches/good_patch.diff
+@@ -0,0 +1,13 @@
++diff --git a/ext/lsm1/lsm_vtab.c b/ext/lsm1/lsm_vtab.c
++--- a/ext/lsm1/lsm_vtab.c
+++++ b/ext/lsm1/lsm_vtab.c
++@@ -897,7 +897,7 @@ static int lsm1BestIndex(
++           idxNum = 2;
++           omit1 = pConstraint->op==SQLITE_INDEX_CONSTRAINT_GE;
++         }else if( idxNum==3 ){
++-          iIdx2 = idxNum;
+++          iIdx2 = argIdx;
++           omit2 = omit1;
++           argIdx = i;
++           idxNum = 1;
++
+diff --git a/.aixcc/vulns/SQL-008/vuln.yaml b/.aixcc/vulns/SQL-008/vuln.yaml
+new file mode 100644
+index 000000000..fa1c7abd9
+--- /dev/null
++++ b/.aixcc/vulns/SQL-008/vuln.yaml
+@@ -0,0 +1,28 @@
++metadata_spec_version: v1
++
++name: LSM zero-day null pointer dereference
++
++author: factsphere
++
++details:
++
++  cwes:
++    - CWE-476
++
++  description: >
++    The bug is a typo that causes a subtle interplay between various parts of the lsm1 module system in SQLite, eventually causing a null pointer dereference when a subsystem attempts to access a value that should have been set up correctly by the typo. 
++
++  locations:
++    - path_from_root: "ext/lsm1/lsm_vtab.c"
++      startLine: 822
++      startColumn: 1
++      endLine: 913
++      endColumn: 1
++
++pov:
++  harness: 'customfuzz3'
++  blob: 'data.bin'
++
++patch:
++  good: 'good_patch.diff'
++  bad: 'bad_patch.diff'
+\ No newline at end of file
+diff --git a/ext/lsm1/lsm1.h b/ext/lsm1/lsm1.h
+new file mode 100644
+index 000000000..243ee5c7a
+--- /dev/null
++++ b/ext/lsm1/lsm1.h
+@@ -0,0 +1,30 @@
++/*
++** 2024 June 4
++**
++** The author disclaims copyright to this source code.  In place of
++** a legal notice, here is a blessing:
++**
++**    May you do good and not evil.
++**    May you find forgiveness for yourself and forgive others.
++**    May you share freely, never taking more than you give.
++**
++******************************************************************************
++**
++** This header file is used by programs that want to link against the
++** LSM1 library.  All it does is declare the sqlite3LsmInit() interface.
++*/
++#include "sqlite3.h"
++
++#ifdef SQLITE_OMIT_VIRTUALTABLE
++# undef SQLITE_ENABLE_LSM
++#endif
++
++#ifdef __cplusplus
++extern "C" {
++#endif  /* __cplusplus */
++
++static int sqlite3LsmInit(sqlite3 *db);
++
++#ifdef __cplusplus
++}  /* extern "C" */
++#endif  /* __cplusplus */
+diff --git a/ext/lsm1/lsm_vtab.c b/ext/lsm1/lsm_vtab.c
+index 8c21923e1..39febff31 100644
+--- a/ext/lsm1/lsm_vtab.c
++++ b/ext/lsm1/lsm_vtab.c
+@@ -1069,6 +1069,12 @@ static sqlite3_module lsm1Module = {
+ };
+ 
+ 
++int sqlite3LsmInit(sqlite3* db){
++  int rc = 0;
++  rc = sqlite3_create_module(db, "lsm1", &lsm1Module, 0);
++  return rc;
++}
++
+ #ifdef _WIN32
+ __declspec(dllexport)
+ #endif
+@@ -1079,6 +1085,6 @@ int sqlite3_lsm_init(
+ ){
+   int rc = SQLITE_OK;
+   SQLITE_EXTENSION_INIT2(pApi);
+-  rc = sqlite3_create_module(db, "lsm1", &lsm1Module, 0);
+-  return rc;
++  return sqlite3LsmInit(db);
+ }
++
+diff --git a/main.mk b/main.mk
+index 8cc37ff77..62e292332 100644
+--- a/main.mk
++++ b/main.mk
+@@ -355,7 +355,8 @@ T.cc.sqlite ?= $(T.cc)
+ CFLAGS.intree_includes = \
+     -I. -I$(TOP)/src -I$(TOP)/ext/rtree -I$(TOP)/ext/icu \
+     -I$(TOP)/ext/fts3 -I$(TOP)/ext/session \
+-    -I$(TOP)/ext/misc
++    -I$(TOP)/ext/misc \
++    -I$(TOP)/ext/lsm1
+ T.cc.sqlite += $(CFLAGS.intree_includes)
+ 
+ #
+@@ -654,6 +655,22 @@ SRC += \
+   $(TOP)/ext/rbu/sqlite3rbu.c
+ SRC += \
+   $(TOP)/ext/misc/stmt.c
++SRC += \
++  $(TOP)/ext/lsm1/lsm_ckpt.c \
++  $(TOP)/ext/lsm1/lsm_file.c \
++  $(TOP)/ext/lsm1/lsm_log.c \
++  $(TOP)/ext/lsm1/lsm_main.c \
++  $(TOP)/ext/lsm1/lsm_mem.c \
++  $(TOP)/ext/lsm1/lsm_mutex.c \
++  $(TOP)/ext/lsm1/lsm_shared.c \
++  $(TOP)/ext/lsm1/lsm_sorted.c \
++  $(TOP)/ext/lsm1/lsm_str.c \
++  $(TOP)/ext/lsm1/lsm_tree.c \
++  $(TOP)/ext/lsm1/lsm_unix.c \
++  $(TOP)/ext/lsm1/lsm_varint.c \
++  $(TOP)/ext/lsm1/lsm_vtab.c \
++  $(TOP)/ext/lsm1/lsm_win32.c \
++  $(TOP)/ext/lsm1/lsm1.h
+ 
+ # Generated source code files
+ #
+@@ -857,6 +874,8 @@ EXTHDR += \
+ EXTHDR += \
+   $(TOP)/ext/rtree/rtree.h \
+   $(TOP)/ext/rtree/geopoly.c
++EXTHDR += \
++  $(TOP)/ext/lsm/lsm1.h
+ EXTHDR += \
+   $(TOP)/ext/icu/sqliteicu.h
+ EXTHDR += \
+@@ -897,6 +916,7 @@ SHELL_OPT += -DSQLITE_DQS=0
+ SHELL_OPT += -DSQLITE_ENABLE_FTS4
+ #SHELL_OPT += -DSQLITE_ENABLE_FTS5
+ SHELL_OPT += -DSQLITE_ENABLE_RTREE
++SHELL_OPT += -DSQLITE_ENABLE_LSM
+ SHELL_OPT += -DSQLITE_ENABLE_EXPLAIN_COMMENTS
+ SHELL_OPT += -DSQLITE_ENABLE_UNKNOWN_SQL_FUNCTION
+ SHELL_OPT += -DSQLITE_ENABLE_STMTVTAB
+@@ -1599,6 +1619,7 @@ TESTFIXTURE_FLAGS += -DSQLITE_SERVER=1 -DSQLITE_PRIVATE="" -DSQLITE_CORE
+ TESTFIXTURE_FLAGS += -DBUILD_sqlite
+ TESTFIXTURE_FLAGS += -DSQLITE_SERIES_CONSTRAINT_VERIFY=1
+ TESTFIXTURE_FLAGS += -DSQLITE_DEFAULT_PAGE_SIZE=1024
++TESTFIXTURE_FLAGS += -DSQLITE_ENABLE_LSM
+ TESTFIXTURE_FLAGS += -DSQLITE_ENABLE_STMTVTAB
+ TESTFIXTURE_FLAGS += -DSQLITE_ENABLE_DBPAGE_VTAB
+ TESTFIXTURE_FLAGS += -DSQLITE_ENABLE_BYTECODE_VTAB
+diff --git a/src/main.c b/src/main.c
+index ff2a408d7..2d87360cf 100644
+--- a/src/main.c
++++ b/src/main.c
+@@ -22,6 +22,9 @@
+ #ifdef SQLITE_ENABLE_RTREE
+ # include "rtree.h"
+ #endif
++#ifdef SQLITE_ENABLE_LSM
++# include "lsm1.h"
++#endif
+ #if defined(SQLITE_ENABLE_ICU) || defined(SQLITE_ENABLE_ICU_COLLATIONS)
+ # include "sqliteicu.h"
+ #endif
+@@ -67,6 +70,9 @@ static int (*const sqlite3BuiltinExtensions[])(sqlite3*) = {
+ #ifdef SQLITE_ENABLE_RTREE
+   sqlite3RtreeInit,
+ #endif
++#ifdef SQLITE_ENABLE_LSM
++  sqlite3LsmInit,
++#endif
+ #ifdef SQLITE_ENABLE_DBPAGE_VTAB
+   sqlite3DbpageRegister,
+ #endif
+diff --git a/test/lsm-test-1.test b/test/lsm-test-1.test
+new file mode 100644
+index 000000000..0a7d612aa
+--- /dev/null
++++ b/test/lsm-test-1.test
+@@ -0,0 +1,51 @@
++# 2023-08-29
++#
++# The author disclaims copyright to this source code.  In place of
++# a legal notice, here is a blessing:
++#
++#    May you do good and not evil.
++#    May you find forgiveness for yourself and forgive others.
++#    May you share freely, never taking more than you give.
++#
++#*************************************************************************
++#
++# Test cases for LSM (SQL-008)
++#
++set testdir [file dirname $argv0]
++source $testdir/tester.tcl
++
++do_execsql_test lsm-100 {
++  CREATE VIRTUAL TABLE contacts USING lsm1 ('contacts.lsm', name, TEXT, address, phone);
++  INSERT INTO contacts (name, address, phone) VALUES
++  ('charlie', '3000 Main St, Topeka KS', '785-555-1234'),
++  ('c', '867 Jenny Avenue, Lawrence KS', '785-867-5309'),
++  ('huey', '1300 Walnut St, Topeka KS', '785-555-9999'),
++  ('zaizee', '900 Maple Dr, Topeka KS', '913-555-1800'),
++  ('william', '42 Skyrise Way, Topeka KS', '785-443-2321'),
++  ('mickey', '123 Chestnut Dr, Lawrence KS', '785-555-1000');
++  SELECT name FROM contacts;
++} {c charlie huey mickey william zaizee}
++
++do_execsql_test lsm-normal-1 {
++  select name from contacts where name > 'c' and name < 'i';
++} {charlie huey}
++
++do_execsql_test lsm-normal-2 {
++  select name from contacts where name = 'c';
++} {c}
++
++do_execsql_test lsm-normal-3 {
++  select name from contacts where name > 'william';
++} {zaizee}
++
++do_execsql_test lsm-normal-4 {
++  select name from contacts where name < 'd';
++} {charlie c}
++
++do_execsql_test lsm-normal-5 {
++  select name from contacts where name > 'c';
++} {charlie huey mickey william zaizee}
++
++
++finish_test
++
+diff --git a/test/lsm1.test b/test/lsm1.test
+new file mode 100644
+index 000000000..3c1aeee1a
+--- /dev/null
++++ b/test/lsm1.test
+@@ -0,0 +1,50 @@
++# 2023-08-29
++#
++# The author disclaims copyright to this source code.  In place of
++# a legal notice, here is a blessing:
++#
++#    May you do good and not evil.
++#    May you find forgiveness for yourself and forgive others.
++#    May you share freely, never taking more than you give.
++#
++#*************************************************************************
++#
++# Test cases for LSM
++#
++set testdir [file dirname $argv0]
++source $testdir/tester.tcl
++
++do_execsql_test lsm-100 {
++  CREATE VIRTUAL TABLE contacts USING lsm1 ('contacts.lsm', name, TEXT, address, phone);
++  INSERT INTO contacts (name, address, phone) VALUES
++  ('charlie', '3000 Main St, Topeka KS', '785-555-1234'),
++  ('c', '867 Jenny Avenue, Lawrence KS', '785-867-5309'),
++  ('huey', '1300 Walnut St, Topeka KS', '785-555-9999'),
++  ('zaizee', '900 Maple Dr, Topeka KS', '913-555-1800'),
++  ('william', '42 Skyrise Way, Topeka KS', '785-443-2321'),
++  ('mickey', '123 Chestnut Dr, Lawrence KS', '785-555-1000');
++  SELECT name FROM contacts;
++} {c charlie huey mickey william zaizee}
++
++do_execsql_test lsm-normal-1 {
++  select name from contacts where name > 'c' and name < 'i';
++} {charlie huey}
++
++do_execsql_test lsm-normal-2 {
++  select name from contacts where name = 'c';
++} {c}
++
++do_execsql_test lsm-normal-3 {
++  select name from contacts where name > 'william';
++} {zaizee}
++
++do_execsql_test lsm-normal-4 {
++  select name from contacts where name < 'd';
++} {charlie c}
++
++do_execsql_test lsm-normal-5 {
++  select name from contacts where name > 'c';
++} {charlie huey mickey william zaizee}
++
++finish_test
++
+diff --git a/tool/mksqlite3c.tcl b/tool/mksqlite3c.tcl
+index 1b3958f46..d76a84719 100644
+--- a/tool/mksqlite3c.tcl
++++ b/tool/mksqlite3c.tcl
+@@ -494,6 +494,21 @@ set flist {
+    sqlite3session.c
+    fts5.c
+    stmt.c
++
++   lsm_ckpt.c
++   lsm_file.c
++   lsm_log.c
++   lsm_main.c
++   lsm_mem.c
++   lsm_mutex.c
++   lsm_shared.c
++   lsm_sorted.c
++   lsm_str.c
++   lsm_tree.c
++   lsm_unix.c
++   lsm_varint.c
++   lsm_vtab.c
++   lsm_win32.c
+ }
+ if {$enable_recover} {
+   lappend flist sqlite3recover.c dbdata.c

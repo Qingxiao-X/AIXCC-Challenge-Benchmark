@@ -1,0 +1,29 @@
+# 2023-08-29
+#
+# The author disclaims copyright to this source code.  In place of
+# a legal notice, here is a blessing:
+#
+#    May you do good and not evil.
+#    May you find forgiveness for yourself and forgive others.
+#    May you share freely, never taking more than you give.
+#
+#*************************************************************************
+#
+# Test cases for LSM (SQL-008)
+#
+set testdir [file dirname $argv0]
+source $testdir/tester.tcl
+set file_name [file join [pwd] "lsm_test_[expr rand() * 1000].db"]
+
+do_execsql_test lsm-normal-5 [format {
+    CREATE VIRTUAL TABLE contacts USING lsm1 ('%s', name, TEXT, address, phone);
+    INSERT INTO contacts (name, address, phone) VALUES
+        ('charlie', '3000 Main St, Topeka KS', '785-555-1234');
+    select lsm_flush(name) from contacts;
+    select lsm_view(name) from contacts;
+} $file_name] {0 {Database structure 1 (view) L0: (age=0) (flags=0000)           |3.3             size=1|            Freelist: (null)}}
+
+
+file delete $file_name
+
+finish_test

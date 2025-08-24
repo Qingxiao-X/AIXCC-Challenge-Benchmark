@@ -1,0 +1,24 @@
+set testdir [file dirname $argv0]
+source $testdir/tester.tcl
+set testprefix basexx
+
+if {[catch {load_static_extension db basexx} error]} {
+  puts "Skipping basexx tests, hit load error: $error"
+  finish_test; return
+}
+
+# Test the 'z' expansion functionality
+# (SQL-006)
+do_execsql_test basexx-z-test-1 {
+  select hex(base85('z'));
+} {00000000}
+
+do_execsql_test basexx-z-test-3 {
+  select hex(base85('KHkS=z0I1c-$6'));
+} {74657374000000002066740C65}
+
+do_execsql_test basexx-z-test-4 {
+  select hex(base85('KHkS=0I1c-$6'));
+} {746573742066740C65}
+
+finish_test

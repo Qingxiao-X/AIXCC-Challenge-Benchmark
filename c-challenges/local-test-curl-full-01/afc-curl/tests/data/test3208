@@ -1,0 +1,38 @@
+<testcase>
+<info>
+<keywords>
+FILE
+no-body
+</keywords>
+</info>
+#
+# Server-side
+<reply>
+</reply>
+
+# Client-side
+
+<client>
+<server>
+file
+</server>
+# tool is what to use instead of 'curl'
+<tool>
+lib%TESTNUMBER
+</tool>
+
+<name>
+Read file and request headers with no body
+</name>
+<command>
+file:///proc/self/status/%TESTNUMBER -i
+</command>
+</client>
+
+#
+
+# Verify data after the test has been "shot"
+
+<verify>
+</verify>
+</testcase>

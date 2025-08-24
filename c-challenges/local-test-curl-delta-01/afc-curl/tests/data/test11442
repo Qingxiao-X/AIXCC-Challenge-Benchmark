@@ -1,0 +1,32 @@
+<testcase>
+<info>
+<keywords>
+verynormalprotocol
+</keywords>
+</info>
+# Server-side
+<reply>
+1
+</reply>
+
+# Client-side
+<client>
+<server>
+verynormalprotocol
+</server>
+
+<name>
+verynormalprotocol test 1
+</name>
+<command>
+verynormalprotocol://%HOSTIP:%VERYNORMALPROTOCOLPORT/asdf
+</command>
+</client>
+
+# Verify data
+<verify>
+<errorcode>
+8
+</errorcode>
+</verify>
+</testcase>

@@ -1,0 +1,50 @@
+# 2023-08-29
+#
+# The author disclaims copyright to this source code.  In place of
+# a legal notice, here is a blessing:
+#
+#    May you do good and not evil.
+#    May you find forgiveness for yourself and forgive others.
+#    May you share freely, never taking more than you give.
+#
+#*************************************************************************
+#
+# Test cases for LSM
+#
+set testdir [file dirname $argv0]
+source $testdir/tester.tcl
+
+do_execsql_test lsm-100 {
+  CREATE VIRTUAL TABLE contacts USING lsm1 ('contacts.lsm', name, TEXT, address, phone);
+  INSERT INTO contacts (name, address, phone) VALUES
+  ('charlie', '3000 Main St, Topeka KS', '785-555-1234'),
+  ('c', '867 Jenny Avenue, Lawrence KS', '785-867-5309'),
+  ('huey', '1300 Walnut St, Topeka KS', '785-555-9999'),
+  ('zaizee', '900 Maple Dr, Topeka KS', '913-555-1800'),
+  ('william', '42 Skyrise Way, Topeka KS', '785-443-2321'),
+  ('mickey', '123 Chestnut Dr, Lawrence KS', '785-555-1000');
+  SELECT name FROM contacts;
+} {c charlie huey mickey william zaizee}
+
+do_execsql_test lsm-normal-1 {
+  select name from contacts where name > 'c' and name < 'i';
+} {charlie huey}
+
+do_execsql_test lsm-normal-2 {
+  select name from contacts where name = 'c';
+} {c}
+
+do_execsql_test lsm-normal-3 {
+  select name from contacts where name > 'william';
+} {zaizee}
+
+do_execsql_test lsm-normal-4 {
+  select name from contacts where name < 'd';
+} {charlie c}
+
+do_execsql_test lsm-normal-5 {
+  select name from contacts where name > 'c';
+} {charlie huey mickey william zaizee}
+
+finish_test
+
