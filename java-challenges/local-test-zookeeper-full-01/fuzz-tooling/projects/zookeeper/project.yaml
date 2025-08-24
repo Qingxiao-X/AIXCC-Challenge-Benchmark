@@ -1,0 +1,8 @@
+homepage: "https://github.com/apache/zookeeper"
+language: jvm
+main_repo: "https://github.com/apache/zookeeper.git"
+fuzzer: "zookeeper-address/MultiProcessTxnFuzzer"
+fuzzing_engines:
+  - libfuzzer
+sanitizers:
+  - address

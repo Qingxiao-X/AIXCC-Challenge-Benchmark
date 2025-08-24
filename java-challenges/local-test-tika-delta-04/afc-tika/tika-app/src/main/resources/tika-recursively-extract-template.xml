@@ -1,0 +1,19 @@
+<properties>
+  PARSERS
+  <fetchers>
+    <fetcher class="org.apache.tika.pipes.fetcher.fs.FileSystemFetcher">
+      <name>fs</name>
+      <basePath>FETCH_BASE_PATH</basePath>
+    </fetcher>
+  </fetchers>
+  <emitters>
+    <emitter class="org.apache.tika.pipes.emitter.fs.FileSystemEmitter">
+      <name>json</name>
+      <basePath>EMIT_JSON_BASE_PATH</basePath>
+    </emitter>
+    <emitter class="org.apache.tika.pipes.emitter.fs.FileSystemEmitter">
+      <name>bytes</name>
+      <basePath>EMIT_BYTES_BASE_PATH</basePath>
+    </emitter>
+  </emitters>
+</properties>

@@ -1,0 +1,8 @@
+homepage: "https://commons.apache.org"
+language: jvm
+main_repo: "https://github.com/apache/commons-compress"
+fuzzer: "commons-compress-address/CompressZipFuzzer"
+fuzzing_engines:
+  - libfuzzer
+sanitizers:
+  - address

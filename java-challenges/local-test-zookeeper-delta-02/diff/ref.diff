@@ -1,0 +1,282 @@
+diff --git a/.aixcc/README.md b/.aixcc/README.md
+new file mode 100644
+index 00000000..3c302784
+--- /dev/null
++++ b/.aixcc/README.md
+@@ -0,0 +1,12 @@
++# Zookeeper - franchise
++
++This challenge is a very simple delta scan challenge.
++
++The challenge includes one synthetic vulnerability (vuln\_0) inside 
++
++
++## Challenge Rounds
++
++This challenge has been included in the following set of rounds.
++
++* Exhibition Round 3
+diff --git a/.aixcc/challenge.yaml b/.aixcc/challenge.yaml
+new file mode 100644
+index 00000000..28911afd
+--- /dev/null
++++ b/.aixcc/challenge.yaml
+@@ -0,0 +1,28 @@
++metadata_spec_version: v1
++
++name: 'franchise'
++
++fuzz_tooling_project_name: 'zookeeper'
++fuzz_tooling_url: https://github.com/aixcc-finals/oss-fuzz-aixcc.git
++fuzz_tooling_ref: challenge-state/zk-delta-02
++
++challenge_type: delta     # full | delta
++
++base_ref: 7f350901823080c5dfa176b37c3f56f121dcd718
++delta_ref: challenges/zk-delta-02
++
++vulnerabilities:
++    - vuln_0
++
++sarif:
++    broadcast: false
++    target: null
++    correct: null
++
++harnesses:
++    - 'DataTreeFuzzer'
++    - 'MessageTrackerPeekReceivedFuzzer'
++    - 'MultiProcessTxnFuzzer'
++    - 'ProcessTxnFuzzer'
++    - 'SerializeFuzzer'
++
+diff --git a/.aixcc/test.sh b/.aixcc/test.sh
+new file mode 100755
+index 00000000..a26cb171
+--- /dev/null
++++ b/.aixcc/test.sh
+@@ -0,0 +1,19 @@
++#!/bin/bash
++
++# This performs the repo-specific tests. It may be replaced with a script
++# or binary for a different interpreter. The name MUST NOT change.
++
++set -e
++set -o pipefail
++
++MAVEN_ARGS="-Dpropguard.skip -Dmaven.javadoc.skip=true -Dpmd.skip=true \
++  -Dencoding=UTF-8 -Dmaven.antrun.skip=true -Dcheckstyle.skip=true \
++  -Dsurefire.failIfNoSpecifiedTests=false"
++
++#We're tightly limiting the focus for the first three. ZooKeeperTest is
++#a proxy for the fuller end to end testing that we're limiting for this challenge.
++MAVEN_TESTS="-Dtest=DataTreeTest,DataNodeTest,DeserializationPerfTest,ZooKeeperTest,MessageTrackerTest"
++
++cd $SRC/zookeeper
++
++${MVN} ${MAVEN_ARGS} ${MAVEN_TESTS} -am -pl :zookeeper clean install --no-snapshot-updates
+diff --git a/.aixcc/vulns/vuln_0/README.md b/.aixcc/vulns/vuln_0/README.md
+new file mode 100644
+index 00000000..c9b9fe15
+--- /dev/null
++++ b/.aixcc/vulns/vuln_0/README.md
+@@ -0,0 +1,7 @@
++# Description
++
++This is a simple OutOfMemoryError triggered by Java's memory inefficient BitSet
++
++This should be easily fuzzable and fairly easily patchable.
++
++For this to be triggered, -Xmx must be set to < 900mb
+diff --git a/.aixcc/vulns/vuln_0/blobs/data.bin b/.aixcc/vulns/vuln_0/blobs/data.bin
+new file mode 100644
+index 00000000..d9feb80f
+Binary files /dev/null and b/.aixcc/vulns/vuln_0/blobs/data.bin differ
+diff --git a/.aixcc/vulns/vuln_0/patches/good_patch.diff b/.aixcc/vulns/vuln_0/patches/good_patch.diff
+new file mode 100644
+index 00000000..16caa3d5
+--- /dev/null
++++ b/.aixcc/vulns/vuln_0/patches/good_patch.diff
+@@ -0,0 +1,46 @@
++diff --git a/zookeeper-server/src/main/java/org/apache/zookeeper/server/DataTree.java b/zookeeper-server/src/main/java/org/apache/zookeeper/server/DataTree.java
++index eb3dcc5e..49c8af1b 100644
++--- a/zookeeper-server/src/main/java/org/apache/zookeeper/server/DataTree.java
+++++ b/zookeeper-server/src/main/java/org/apache/zookeeper/server/DataTree.java
++@@ -22,7 +22,6 @@
++ import java.io.IOException;
++ import java.io.PrintWriter;
++ import java.util.ArrayList;
++-import java.util.BitSet;
++ import java.util.Collection;
++ import java.util.Collections;
++ import java.util.HashMap;
++@@ -157,7 +156,7 @@ public class DataTree {
++     /**
++      * Maintains ordered set of unique cxids within this DataTree
++      */
++-    private final BitSet cxids = new BitSet();
+++    private final HashSet<Integer> cxids = new HashSet<>();
++     /**
++      * This set contains the paths of all container nodes
++      */
++@@ -865,7 +864,7 @@ public ProcessTxnResult processTxn(TxnHeader header, Record txn) {
++     public ProcessTxnResult processTxn(TxnHeader header, Record txn, boolean isSubTxn) {
++         ProcessTxnResult rc = new ProcessTxnResult();
++         //cxids can only be positive; let's ensure that
++-        cxids.set(Math.abs(header.getCxid()));
+++        cxids.add(Math.abs(header.getCxid()));
++ 
++         try {
++             rc.clientId = header.getClientId();
++@@ -1812,13 +1811,8 @@ public void compareSnapshotDigests(long zxid) {
++     }
++ 
++     public List<Integer> getCxids() {
++-        List<Integer> cxidList = new ArrayList<>();
++-        for (int i = cxids.nextSetBit(0); i >= 0; i = cxids.nextSetBit(i+1)) {
++-            cxidList.add(i);
++-            if (i == Integer. MAX_VALUE) {
++-                break; // or (i+1) would overflow
++-            }
++-        }
+++        List<Integer> cxidList = new ArrayList<>(cxids);
+++        Collections.sort(cxidList);
++         return cxidList;
++     }
++ 
+diff --git a/.aixcc/vulns/vuln_0/vuln.yaml b/.aixcc/vulns/vuln_0/vuln.yaml
+new file mode 100644
+index 00000000..9b6d4d20
+--- /dev/null
++++ b/.aixcc/vulns/vuln_0/vuln.yaml
+@@ -0,0 +1,31 @@
++metadata_spec_version: v1
++
++name: bitset oom
++
++author: Tim Allison
++
++details:
++
++    cwes:
++        - CWE-789
++        - CWE-400
++
++    description: >
++        Using java's BitSet can cause an OutOfMemoryError/DoS
++
++    locations:
++        - path_from_root: 'zookeeper-server/src/main/java/org/apache/zookeeper/server/DataTree.java'
++          startLine: 868
++          startColumn: 9
++          endLine: 868
++          endColumn: 47
++
++
++pov:
++    blob: 'data.bin'
++    harness: 'MultiProcessTxnFuzzer'
++
++patch:
++    good: 'good_patch.diff'
++    bad: 'bad_patch.diff'
++    
+diff --git a/zookeeper-server/src/main/java/org/apache/zookeeper/server/DataTree.java b/zookeeper-server/src/main/java/org/apache/zookeeper/server/DataTree.java
+index 012a10e5..eb3dcc5e 100644
+--- a/zookeeper-server/src/main/java/org/apache/zookeeper/server/DataTree.java
++++ b/zookeeper-server/src/main/java/org/apache/zookeeper/server/DataTree.java
+@@ -22,6 +22,7 @@
+ import java.io.IOException;
+ import java.io.PrintWriter;
+ import java.util.ArrayList;
++import java.util.BitSet;
+ import java.util.Collection;
+ import java.util.Collections;
+ import java.util.HashMap;
+@@ -153,6 +154,10 @@ public class DataTree {
+      */
+     private final Map<Long, HashSet<String>> ephemerals = new ConcurrentHashMap<>();
+ 
++    /**
++     * Maintains ordered set of unique cxids within this DataTree
++     */
++    private final BitSet cxids = new BitSet();
+     /**
+      * This set contains the paths of all container nodes
+      */
+@@ -859,6 +864,8 @@ public ProcessTxnResult processTxn(TxnHeader header, Record txn) {
+ 
+     public ProcessTxnResult processTxn(TxnHeader header, Record txn, boolean isSubTxn) {
+         ProcessTxnResult rc = new ProcessTxnResult();
++        //cxids can only be positive; let's ensure that
++        cxids.set(Math.abs(header.getCxid()));
+ 
+         try {
+             rc.clientId = header.getClientId();
+@@ -1804,6 +1811,17 @@ public void compareSnapshotDigests(long zxid) {
+         }
+     }
+ 
++    public List<Integer> getCxids() {
++        List<Integer> cxidList = new ArrayList<>();
++        for (int i = cxids.nextSetBit(0); i >= 0; i = cxids.nextSetBit(i+1)) {
++            cxidList.add(i);
++            if (i == Integer. MAX_VALUE) {
++                break; // or (i+1) would overflow
++            }
++        }
++        return cxidList;
++    }
++
+     /**
+      * Compares the digest of the tree with the digest present in transaction digest.
+      * If there is any error, logs and alerts the watchers.
+diff --git a/zookeeper-server/src/test/java/org/apache/zookeeper/server/DataTreeTest.java b/zookeeper-server/src/test/java/org/apache/zookeeper/server/DataTreeTest.java
+index 13276d85..3095e05b 100644
+--- a/zookeeper-server/src/test/java/org/apache/zookeeper/server/DataTreeTest.java
++++ b/zookeeper-server/src/test/java/org/apache/zookeeper/server/DataTreeTest.java
+@@ -18,6 +18,7 @@
+ 
+ package org.apache.zookeeper.server;
+ 
++import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+ import static org.junit.jupiter.api.Assertions.assertEquals;
+ import static org.junit.jupiter.api.Assertions.assertFalse;
+ import static org.junit.jupiter.api.Assertions.assertNotEquals;
+@@ -225,6 +226,36 @@ public void testDigestUpdatedWhenReplayCreateTxnForExistNode() {
+         }
+     }
+ 
++    @Test
++    public void testCxids() throws Exception {
++        int[] expected = new int[]{1,2,3,5};
++        //test basic
++        _testCxids(expected, 1,2,3,5);
++        //test order
++        _testCxids(expected, 5,3,2,1);
++        //test dupes
++        _testCxids(expected, 1,1,2,3,5);
++        //test negatives
++        _testCxids(expected, -5,1,2,3);
++        //test negative dupes
++        _testCxids(expected, -3,1,2,-3,5);
++        //test negative+positive dupes
++        _testCxids(expected, -3,1,2,3,5);
++        //test empty
++        _testCxids(new int[0]);
++    }
++
++    void _testCxids(int[] expected, int ... vals) {
++        DataTree dT = new DataTree();
++        for (int cxid : vals) {
++            TxnHeader txnHeader = new TxnHeader(13, cxid, 1, 30, ZooDefs.OpCode.create);
++            CreateTxn createTxn = new CreateTxn("/foo", "".getBytes(), ZooDefs.Ids.OPEN_ACL_UNSAFE, false, 1);
++            dT.processTxn(txnHeader, createTxn);
++        }
++        int[] cxidInts = dT.getCxids().stream().mapToInt(x->x).toArray();
++        assertArrayEquals(expected, cxidInts);
++    }
++
+     @Test
+     @Timeout(value = 60)
+     public void testPathTrieClearOnDeserialize() throws Exception {

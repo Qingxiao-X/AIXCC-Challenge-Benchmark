@@ -1,0 +1,8 @@
+homepage: "https://tika.apache.org/"
+language: jvm
+fuzzing_engines:
+  - libfuzzer
+main_repo: "https://github.com/apache/tika/"
+fuzzer: "tika-address/M3U8ParserFuzzer"
+sanitizers:
+  - address
